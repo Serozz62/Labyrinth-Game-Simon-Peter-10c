@@ -1,33 +1,43 @@
 import pygame
 import sys
 import os
-
+ 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-
+ 
 pygame.init()
 pygame.display.set_caption("Labyrinth Spiel")
 clock = pygame.time.Clock()
-
-screensize = (1280, 720)
+ 
+TILE_SIZE = 64
+GRID_WIDTH = 10
+GRID_HEIGHT = 10
+screensize = (GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE)
 screen = pygame.display.set_mode(screensize)
-
+ 
 class Wall(pygame.sprite.Sprite):
     def __init__(self, x, y, dangerous=False):
         super().__init__()
         self.image = pygame.image.load("wall.png").convert_alpha()
-        self.image = pygame.transform.scale(self.image, (300, 150))  
+        self.image = pygame.transform.scale(self.image, (TILE_SIZE, TILE_SIZE))
         self.rect = self.image.get_rect(topleft=(x, y))
         self.dangerous = dangerous
-
+ 
+class Goal(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__()
+        self.image = pygame.Surface((TILE_SIZE, TILE_SIZE))
+        self.image.fill((0, 255, 0))
+        self.rect = self.image.get_rect(topleft=(x, y))
+ 
 class Player(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
         self.image = pygame.image.load("player.png").convert_alpha()
-        self.image = pygame.transform.scale(self.image, (186, 186))  
+        self.image = pygame.transform.scale(self.image, (TILE_SIZE, TILE_SIZE))
         self.rect = self.image.get_rect(topleft=(x, y))
-        self.speed = 10
-        self.hit_cooldown = 0  # Cooldown-Zähler in Frames (60 Frames = 2 Sekunden)
-
+        self.speed = TILE_SIZE
+        self.hit_cooldown = 0
+ 
     def update(self, key, walls):
         global lives
         dx, dy = 0, 0
@@ -39,76 +49,79 @@ class Player(pygame.sprite.Sprite):
             dy = -self.speed
         if key[pygame.K_s]:
             dy = self.speed
-
-        # Horizontale Bewegung + Kollision prüfen
+ 
         self.rect.x += dx
-        collided_wall = pygame.sprite.spritecollideany(self, walls)
-        if collided_wall:
+        if pygame.sprite.spritecollideany(self, walls):
             self.rect.x -= dx
-            if getattr(collided_wall, "dangerous", False) and self.hit_cooldown == 0:
-                lives -= 1
-                print("Leben verloren! Verbleibend:", lives)
-                self.hit_cooldown = 60
-
-        # Vertikale Bewegung + Kollision prüfen
+ 
         self.rect.y += dy
-        collided_wall = pygame.sprite.spritecollideany(self, walls)
-        if collided_wall:
+        if pygame.sprite.spritecollideany(self, walls):
             self.rect.y -= dy
-            if getattr(collided_wall, "dangerous", False) and self.hit_cooldown == 0:
-                lives -= 1
-                print("Leben verloren! Verbleibend:", lives)
-                self.hit_cooldown = 60
+ 
+        self.rect.clamp_ip(screen.get_rect())
 
-        # Cooldown-Timer runterzählen
-        if self.hit_cooldown > 0:
-            self.hit_cooldown -= 1
-
+maze = [
+    [1,1,1,1,1,1,1,1,1,1],
+    [1,0,0,0,1,0,1,0,0,1],
+    [1,0,1,0,1,0,1,0,1,1],
+    [1,0,1,0,0,0,1,0,1,1],
+    [1,0,1,1,1,0,1,0,0,1],
+    [1,0,0,0,1,0,1,1,0,1],
+    [1,1,1,0,1,0,0,1,0,1],
+    [1,0,0,0,1,1,0,1,0,1],
+    [1,0,1,1,1,0,0,0,0,1],
+    [1,1,1,1,1,1,1,1,1,1],
+]
+ 
 wallGroup = pygame.sprite.Group()
-wallGroup.add(Wall(100, 200, dangerous=True))  
-wallGroup.add(Wall(450, 200, dangerous=True))  
-wallGroup.add(Wall(800, 200,dangerous=True)) 
-
-player = Player(500, 500)
+for y, row in enumerate(maze):
+    for x, tile in enumerate(row):
+        if tile == 1:
+            wallGroup.add(Wall(x * TILE_SIZE, y * TILE_SIZE))
+ 
+goal = Goal(1 * TILE_SIZE, 1 * TILE_SIZE)
+goalGroup = pygame.sprite.Group(goal)
+ 
+player = Player(5 * TILE_SIZE, 8 * TILE_SIZE)
 playerGroup = pygame.sprite.Group(player)
-
-start_time = pygame.time.get_ticks()
-max_time = 120_000  # 2 Minuten
+ 
 lives = 3
 font = pygame.font.SysFont(None, 48)
-
 running = True
 game_over = False
-
+won = False
+ 
 while running:
     screen.fill((0, 0, 0))
-
+ 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-
-    if not game_over:
+ 
+    if not game_over and not won:
         keys = pygame.key.get_pressed()
         player.update(keys, wallGroup)
-
-        # Game Over prüfen
-        if lives <= 0:
-            game_over = True
-
-        # Sprites zeichnen
+ 
+        if pygame.sprite.spritecollideany(player, goalGroup):
+            won = True
+ 
         wallGroup.draw(screen)
+        goalGroup.draw(screen)
         playerGroup.draw(screen)
-
-        # Lebensanzeige
+ 
         lives_text = font.render(f"Leben: {lives}", True, (255, 0, 0))
-        screen.blit(lives_text, (20, 20))
-
-    else:
+        screen.blit(lives_text, (10, 10))
+ 
+    elif game_over:
         game_over_text = font.render("Game Over!", True, (255, 255, 255))
         screen.blit(game_over_text, (screensize[0] // 2 - 100, screensize[1] // 2 - 24))
-
+ 
+    elif won:
+        win_text = font.render("Gewonnen!", True, (0, 255, 0))
+        screen.blit(win_text, (screensize[0] // 2 - 100, screensize[1] // 2 - 24))
+ 
     pygame.display.flip()
-    clock.tick(30)
-
+    clock.tick(10)
+ 
 pygame.quit()
 sys.exit()
